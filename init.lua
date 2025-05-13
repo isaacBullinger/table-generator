@@ -24,6 +24,7 @@ M.open_table_input = function()
     local msg = {
         "Write values in double quotes separated by commas.",
         "For rows, use a new line. Use the first row for headers.",
+        "Press enter to save to CSV",
         ""
     }
 
@@ -33,31 +34,43 @@ M.open_table_input = function()
     -- Close window using Esc
     vim.api.nvim_buf_set_keymap(buf, "n", "<Esc>", "<Cmd>bd!<CR>", { noremap = true, silent = true })
 
-    -- Keybinding to generate table
+    -- Keybinding to save to CSV
     vim.api.nvim_buf_set_keymap(buf, "n", "<CR>", "<Cmd>lua require('table-generator').process_input()<CR>", { noremap = true, silent = true })
 
     M.input_win = win
     M.input_buf = buf
 end
 
--- Save user input to CSV
+-- Save input to CSV file.
 M.process_input = function()
-    local start_line = 2 -- skip first 3 lines (0-based)
-    local lines = vim.api.nvim_buf_get_lines(M.input_buf, start_line, -1, false)
-    local csv_path = vim.fn.stdpath("data") .. "/table_output.csv"
+    local instruction_lines = 3
+    local lines = vim.api.nvim_buf_get_lines(M.input_buf, instruction_lines, -1, false)
 
-    local file = io.open(csv_path, "w")
-    if file then
-        for _, line in ipairs(lines) do
-            file:write(line, "\n")
-        end
-        file:close()
-        print("CSV saved to: " .. csv_path)
-    else
-        print("Failed to write CSV file")
+    if #lines == 0 then
+        print("No data to save.")
+        return
     end
 
-    vim.api.nvim_win_close(M.input_win, true)
+    vim.ui.input({ prompt = "Enter filename (without extension): " }, function(input)
+        if input and input ~= "" then
+            local path = vim.fn.getcwd() .. "/" .. input .. ".csv"
+            local file = io.open(path, "w")
+
+            if file then
+                for _, line in ipairs(lines) do
+                    file:write(line, "\n")
+                end
+                file:close()
+                print("CSV saved to: " .. path)
+            else
+                print("Failed to write file.")
+            end
+        else
+            print("Save cancelled.")
+        end
+
+        vim.api.nvim_win_close(M.input_win, true)
+    end)
 end
 
 -- Setup command
