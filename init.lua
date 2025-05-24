@@ -72,12 +72,24 @@ end
 
 M.get_col_widths = function(rows)
     local widths = {}
-    for _, row in ipairs(rows) do
-        for i, cell in ipairs(row) do
-            widths[i] = math.max(widths[i] or 0, #cell)
-        end
+    for i, header in ipairs(rows[1]) do
+        widths[i] = math.max(widths[i] or 0, #header)
     end
     return widths
+end
+
+M.wrap_cell = function (text, width)
+    local lines, line = {}, ""
+    for word in text:gmatch("%S+") do
+        if #line + #word + 1 > width then
+            table.insert(lines, line)
+            line = word
+        else
+            line = (#line > 0) and (line .. " " .. word) or word
+        end
+    end
+    if #line > 0 then table.insert(lines, line) end
+    return lines
 end
 
 M.make_separator = function(widths)
@@ -88,34 +100,70 @@ M.make_separator = function(widths)
   return sep
 end
 
-M.pad_cell = function(text, width)
-  return " " .. text .. string.rep(" ", width - #text + 1)
+M.pad_cell = function(text_lines, width)
+    local padded = {}
+    for _, line in ipairs(text_lines) do
+        table.insert(padded, " " .. line .. string.rep(" ", width - #line + 1))
+    end
+    return padded
+end
+
+local function adjust_widths(widths, headers, max_total_width)
+    local total = 0
+    for i, w in ipairs(widths) do
+        widths[i] = math.max(#headers[i], w)
+        total = total + widths[i]
+    end
+
+    local padding = (#widths * 3) + 1
+    local total_width = total + padding
+
+    if total_width > max_total_width then
+        local excess = total_width - max_total_width
+        while excess > 0 do
+            for i = 1, #widths do
+                if widths[i] > #headers[i] and excess > 0 then
+                    widths[i] = widths[i] - 1
+                    excess = excess - 1
+                end
+            end
+            if excess > 0 then break end
+        end
+    end
+
+    return widths
 end
 
 M.generate_ascii_table = function(rows, total_width)
     local widths = M.get_col_widths(rows)
+
     if total_width then
-        local sum = 0
-        for _, w in ipairs(widths) do sum = sum + w end
-        local padding = total_width - sum - (#widths * 3) - 1
-        if padding > 0 then
-            local extra = math.floor(padding / #widths)
-            for i = 1, #widths do
-                widths[i] = widths[i] + extra
-            end
-        end
+        widths = adjust_widths(widths, rows[1], total_width)
     end
+
     local sep = M.make_separator(widths)
     local lines = { sep }
 
-    for _, row in ipairs(rows) do
-        local line = "|"
+    for row_index, row in ipairs(rows) do
+        local wrapped = {}
+        local max_lines = 0
         for j, cell in ipairs(row) do
-            line = line .. M.pad_cell(cell, widths[j]) .. "|"
+            local lines = M.wrap_cell(cell, widths[j])
+            wrapped[j] = lines
+            max_lines = math.max(max_lines, #lines)
         end
-        table.insert(lines, line)
+
+        for i = 1, max_lines do
+            local line = "|"
+            for j = 1, #widths do
+                local cell_lines = M.pad_cell(wrapped[j], widths[j])
+                line = line .. (cell_lines[i] or string.rep(" ", widths[j] + 2)) .. "|"
+            end
+            table.insert(lines, line)
+        end
         table.insert(lines, sep)
     end
+
     return lines
 end
 
@@ -151,7 +199,7 @@ M.process_input = function()
 
                 -- Insert table
                 local rows = M.read_csv(input .. ".csv")
-                local table_lines = M.generate_ascii_table(rows, width)
+                local table_lines = M.generate_ascii_table(rows, tonumber(width))
 
                 vim.api.nvim_set_current_win(vim.fn.win_getid(vim.fn.bufwinnr(1)))
                 vim.api.nvim_put(table_lines, 'l', true, true)
@@ -174,7 +222,7 @@ end
 
 -- Setup command
 M.setup = function()
-    vim.api.nvim_create_user_command("Tables", function()
+    vim.api.nvim_create_user_command("Table", function()
         M.open_table_input()
     end, {})
 end
