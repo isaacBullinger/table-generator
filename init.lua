@@ -1,6 +1,6 @@
 local M = {}
 
--- Floating window function
+-- Opens floating window for user input.
 M.open_table_input = function()
     local buf = vim.api.nvim_create_buf(false, true)
 
@@ -39,7 +39,7 @@ M.open_table_input = function()
     M.input_buf = buf
 end
 
--- Function that reads the CSV file and returns the data
+-- Function that reads the CSV file and returns parsed rows and optional total width.
 M.read_csv = function(filename)
     local path=vim.fn.getcwd() .. "/" .. filename
     local rows = {}
@@ -56,6 +56,7 @@ M.read_csv = function(filename)
     return rows, total_width
 end
 
+-- Parses CSV lines and returns them as an array.
 M.parse_csv_line = function(line)
     local fields = {}
     local pattern = '"(.-)"%s*,?%s*'
@@ -70,14 +71,37 @@ M.parse_csv_line = function(line)
     return fields
 end
 
+-- Computes the max widths of columns.
 M.get_col_widths = function(rows)
     local widths = {}
-    for i, header in ipairs(rows[1]) do
-        widths[i] = math.max(widths[i] or 0, #header)
+    for _, row in ipairs(rows) do
+        for i, cell in ipairs(row) do
+            widths[i] = math.max(widths[i] or 0, #cell)
+        end
     end
     return widths
 end
 
+-- Builds horizontal separator using - and + signs.
+M.make_separator = function(widths)
+  local sep = "+"
+  for _, w in ipairs(widths) do
+    sep = sep .. string.rep("-", w + 2) .. "+"
+  end
+  return sep
+end
+
+-- Adds a space before and after the content.
+M.pad_cell = function(text_lines, width)
+    local padded = {}
+    for _, line in ipairs(text_lines) do
+        line = line == "" and "" or (" " .. line .. string.rep(" ", width - #line + 1))
+        table.insert(padded, line)
+    end
+    return padded
+end
+
+-- Wraps words in cell.
 M.wrap_cell = function (text, width)
     local lines, line = {}, ""
     for word in text:gmatch("%S+") do
@@ -92,43 +116,28 @@ M.wrap_cell = function (text, width)
     return lines
 end
 
-M.make_separator = function(widths)
-  local sep = "+"
-  for _, w in ipairs(widths) do
-    sep = sep .. string.rep("-", w + 2) .. "+"
-  end
-  return sep
-end
-
-M.pad_cell = function(text_lines, width)
-    local padded = {}
-    for _, line in ipairs(text_lines) do
-        table.insert(padded, " " .. line .. string.rep(" ", width - #line + 1))
-    end
-    return padded
-end
-
-local function adjust_widths(widths, headers, max_total_width)
-    local total = 0
-    for i, w in ipairs(widths) do
-        widths[i] = math.max(#headers[i], w)
-        total = total + widths[i]
-    end
-
+-- Dynamically adjusts widths of the cell based on content.
+M.adjust_widths = function(widths, max_total_width)
     local padding = (#widths * 3) + 1
-    local total_width = total + padding
+    local total_width = 0
+    for _, w in ipairs(widths) do total_width = total_width + w end
+    total_width = total_width + padding
 
-    if total_width > max_total_width then
-        local excess = total_width - max_total_width
-        while excess > 0 do
-            for i = 1, #widths do
-                if widths[i] > #headers[i] and excess > 0 then
-                    widths[i] = widths[i] - 1
-                    excess = excess - 1
-                end
+    if total_width <= max_total_width then
+        return widths
+    end
+
+    local excess = total_width - max_total_width
+    while excess > 0 do
+        local shrunk_any = false
+        for i = 1, #widths do
+            if widths[i] > 2 and excess > 0 then
+                widths[i] = widths[i] - 1
+                excess = excess - 1
+                shrunk_any = true
             end
-            if excess > 0 then break end
         end
+        if not shrunk_any then break end
     end
 
     return widths
@@ -136,9 +145,8 @@ end
 
 M.generate_ascii_table = function(rows, total_width)
     local widths = M.get_col_widths(rows)
-
     if total_width then
-        widths = adjust_widths(widths, rows[1], total_width)
+        widths = M.adjust_widths(widths, total_width)
     end
 
     local sep = M.make_separator(widths)
@@ -147,20 +155,30 @@ M.generate_ascii_table = function(rows, total_width)
     for row_index, row in ipairs(rows) do
         local wrapped = {}
         local max_lines = 0
+
         for j, cell in ipairs(row) do
-            local lines = M.wrap_cell(cell, widths[j])
-            wrapped[j] = lines
-            max_lines = math.max(max_lines, #lines)
+            local lines_cell = M.wrap_cell(cell, widths[j])
+            wrapped[j] = lines_cell
+            max_lines = math.max(max_lines, #lines_cell)
+        end
+
+        for j = 1, #widths do
+            local cell_lines = wrapped[j]
+            while #wrapped[j] < max_lines do
+                table.insert(wrapped[j], "")
+            end
+            wrapped[j] = cell_lines
         end
 
         for i = 1, max_lines do
             local line = "|"
             for j = 1, #widths do
-                local cell_lines = M.pad_cell(wrapped[j], widths[j])
-                line = line .. (cell_lines[i] or string.rep(" ", widths[j] + 2)) .. "|"
+                local text = wrapped[j][i] or ""
+                line = line .. " " .. text .. string.rep(" ", widths[j] - #text + 1) .. "|"
             end
             table.insert(lines, line)
         end
+
         table.insert(lines, sep)
     end
 
