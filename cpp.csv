@@ -1,0 +1,4 @@
+85
+"Operation","Description","C# Code","Big O"
+"put(key, value)","Adds (or replaces) a row in the map with the specified key and value.","myMap.Add(key, value) or myMap[key] = value","O(1)"
+"get(key)","Gets the value for the specified key","myMap[key]","O(1)"

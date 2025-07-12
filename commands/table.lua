@@ -46,7 +46,13 @@ M.process_input = function()
     local input_lines = vim.api.nvim_buf_get_lines(M.input_buf, 0, -1, false)
     local width = tonumber(input_lines[width_line_index]:match("Width:%s*(%d+)"))
 
-    local lines = vim.api.nvim_buf_get_lines(M.input_buf, width_line_index, -1, false)
+    local all_lines = vim.api.nvim_buf_get_lines(M.input_buf, 0, -1, false)
+    local lines = {}
+    for i = width_line_index + 1, #all_lines do
+        if all_lines[i]:match('%S') then  -- only non-empty lines
+            table.insert(lines, all_lines[i])
+        end
+    end
     if #lines < 2 then
         print("No data to save.")
         return

@@ -6,7 +6,7 @@
 +-----------+-----------+-----------+
 
 +----+----+----+
-| h3 | h2 | h3 |
+| h1 | h2 | h3 |
 +----+----+----+
 | c1 | c2 | c3 |
 +----+----+----+
@@ -17,6 +17,25 @@
 | 4 | 5 | 6 |
 +---+---+---+
 
+"h1", "h2", "h3"
+"c1", "c2", "c3"
+
+
++----+----+----+
+|    |    |    |
+| h1 | h2 | h3 |
++----+----+----+
+|    |    |    |
+| c1 | c2 | c3 |
++----+----+----+
+
++----+----+----+
+|    |    |    |
+| h1 | h2 | h3 |
++----+----+----+
+|    |    |    |
+| c1 | c2 | c3 |
++----+----+----+
 
 
 
@@ -48,10 +67,22 @@
 
 
 
+"h1", "h2", "h3 is too long and exceeds max width"
+"c1", "c2", "c3 is too long and exceeds max width even more by quite a lot"
 
+"Operation","Description","C# Code","Big O"
+"put(key, value)","Adds (or replaces) a row in the map with the specified key and value.","myMap.Add(key, value) or myMap[key] = value","O(1)"
+"get(key)","Gets the value for the specified key","myMap[key]","O(1)"
 
-
-
+Output:
++----+----+----------------------------+
+|    |    | h3 is too long and exceeds |
+| h1 | h2 | max width                  |
++----+----+----------------------------+
+|    |    | c3 is too long and exceeds |
+| c1 | c2 | max width even more by     |
+|    |    | quite a lot                |
++----+----+----------------------------+
 
 Expected output:
 +----+----+----------------------------+

@@ -3,14 +3,24 @@ local M = {}
 -- Parses CSV lines and returns them as an array.
 M.parse_csv_line = function(line)
     local fields = {}
-    local pattern = '"(.-)"%s*,?%s*'
+    local field = ""
+    local in_quotes = false
 
-    local last_end = 1
-    while true do
-        local s, e, field = line:find(pattern, last_end)
-        if not s then break end
-        table.insert(fields, field)
-        last_end = e + 1
+    for i = 1, #line do
+        local char = line:sub(i, i)
+        if char == '"' then
+            in_quotes = not in_quotes
+        elseif char == ',' and not in_quotes then
+            table.insert(fields, field)
+            field = ""
+        else
+            field = field .. char
+        end
+    end
+    table.insert(fields, field) -- last field
+    -- Remove outer quotes and trim whitespace
+    for i = 1, #fields do
+        fields[i] = fields[i]:gsub('^%s*"(.-)"%s*$', "%1")
     end
     return fields
 end
@@ -71,19 +81,23 @@ end
 M.wrap_cell = function (text, width)
     local lines, line = {}, ""
     for word in text:gmatch("%S+") do
-        if #line + #word + 1 > width then
+        if #line + #word + (line == "" and 0 or 1) > width then
             table.insert(lines, line)
             line = word
         else
             line = (#line > 0) and (line .. " " .. word) or word
         end
     end
-    if #line > 0 then table.insert(lines, line) end
+    if #line > 0 then
+        table.insert(lines, line)
+    elseif #lines == 0 then
+        table.insert(lines, "")
+    end
     return lines
 end
 
 -- Dynamically adjusts widths of the cell based on content.
-M.adjust_widths = function(widths, max_total_width)
+M.adjust_widths = function(widths, max_total_width, header_row)
     local padding = (#widths * 3) + 1
     local total_width = 0
     for _, w in ipairs(widths) do total_width = total_width + w end
@@ -107,7 +121,8 @@ M.adjust_widths = function(widths, max_total_width)
     local i = 1
     while excess > 0 do
         local idx = indexed[i].i
-        if widths[idx] > 2 then
+        local min_width = #header_row[idx]
+        if widths[idx] > min_width then
             widths[idx] = widths[idx] - 1
             excess = excess - 1
         end
@@ -120,38 +135,47 @@ end
 M.generate_ascii_table = function(rows, total_width)
     local widths = M.get_col_widths(rows)
     if total_width then
-        widths = M.adjust_widths(widths, total_width)
+        widths = M.adjust_widths(widths, total_width, rows[1])
     end
 
     local sep = M.make_separator(widths)
     local lines = { sep }
 
-    for row_index, row in ipairs(rows) do
-        local wrapped = {}
-        local max_lines = 0
+    local function add_wrapped_row(row)
+        local wrapped, max_lines = {}, 0
 
-        for j, cell in ipairs(row) do
-            local lines_cell = M.wrap_cell(cell, widths[j])
-            wrapped[j] = lines_cell
-            max_lines = math.max(max_lines, #lines_cell)
+        for i, cell in ipairs(row) do
+            local wrapped_lines = M.wrap_cell(cell, widths[i])
+            wrapped[i] = wrapped_lines
+            max_lines = math.max(max_lines, #wrapped_lines)
         end
 
-        for j = 1, #widths do
-            while #wrapped[j] < max_lines do
-                table.insert(wrapped[j], "")
+        -- pad all cells to have the same number of lines (bottom padding)
+        for i = 1, #wrapped do
+            while #wrapped[i] < max_lines do
+                table.insert(wrapped[i], "") -- pad at bottom
             end
         end
 
-        for i = 1, max_lines do
+        -- build each physical line
+        for line_num = 1, max_lines do
             local line = "|"
-            for j = 1, #widths do
-                local text = wrapped[j][i] or ""
-                line = line .. " " .. text .. string.rep(" ", widths[j] - #text + 1) .. "|"
+            for i = 1, #widths do
+                local content = wrapped[i][line_num]
+                line = line .. " " .. content .. string.rep(" ", widths[i] - #content + 1) .. "|"
             end
             table.insert(lines, line)
         end
 
         table.insert(lines, sep)
+    end
+
+    -- Add header row
+    add_wrapped_row(rows[1])
+
+    -- Add data rows
+    for i = 2, #rows do
+        add_wrapped_row(rows[i])
     end
 
     return lines
