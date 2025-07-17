@@ -1,12 +1,13 @@
 local core = require("table-generator.core")
 local M = {}
 
+-- Finds a CSV file that matches the table and opens a floating window to edit the table located under the cursor.
 M.edit_table_at_cursor = function()
     local cursor_row = vim.api.nvim_win_get_cursor(0)[1]
     local buf = vim.api.nvim_get_current_buf()
     local total_lines = vim.api.nvim_buf_line_count(buf)
 
-    -- Find the top and bottom lines marked by +
+    -- Find the top of table
     local top = cursor_row
     while top > 1 do
         local line = vim.api.nvim_buf_get_lines(buf, top - 2, top - 1, false)[1]
@@ -14,6 +15,7 @@ M.edit_table_at_cursor = function()
         top = top - 1
     end
 
+    -- Find the bottom of table
     local bottom = cursor_row
     while bottom < total_lines do
         local line = vim.api.nvim_buf_get_lines(buf, bottom, bottom + 1, false)[1]
@@ -21,7 +23,7 @@ M.edit_table_at_cursor = function()
         bottom = bottom + 1
     end
 
-    -- Extract the table lines
+    -- Extract the table lines from detected table range
     local table_lines = vim.api.nvim_buf_get_lines(buf, top - 1, bottom, false)
     if #table_lines < 3 then
         print("Could not find full table.")
@@ -47,7 +49,7 @@ M.edit_table_at_cursor = function()
         return
     end
 
-    -- Find matching CSV file
+    -- Find matching CSV file using the header
     local files = vim.fn.glob("*.csv", 0, 1)
     for _, file in ipairs(files) do
         local rows, _ = core.read_csv(file)
@@ -77,12 +79,14 @@ M.edit_table_at_cursor = function()
     print("No matching CSV found.")
 end
 
+-- Opens a floating window for editing tables
 M.edit_existing_csv = function(filename)
     local rows, total_width = core.read_csv(filename)
     local buf = vim.api.nvim_create_buf(false, true)
     local width = math.floor(vim.o.columns * 0.6)
     local height = math.floor(vim.o.lines * 0.4)
 
+    -- Center floating window
     local win = vim.api.nvim_open_win(buf, true, {
         relative = "editor",
         width = width,
@@ -93,6 +97,7 @@ M.edit_existing_csv = function(filename)
         border = { "+", "-", "+", "|" },
     })
 
+    -- Prepare lines for editing
     local lines = { "Edit Table. Width: " .. (total_width or ""), "" }
     for _, row in ipairs(rows) do
         local quoted = {}
@@ -103,14 +108,18 @@ M.edit_existing_csv = function(filename)
     end
 
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+
+    -- Close window using Esc
     vim.api.nvim_buf_set_keymap(buf, "n", "<Esc>", "<Cmd>bd!<CR>", { noremap = true, silent = true })
 
+    -- Finalize edit when pressing Enter in normal mode
     vim.api.nvim_buf_set_keymap(buf, "n", "<CR>", "<Cmd>lua require('table-generator.commands.edit')._finalize_edit('" .. filename .. "')<CR>", { noremap = true, silent = true })
 
     M.input_win = win
     M.input_buf = buf
 end
 
+-- Saves edits to CSV file and inserts updated table
 M._finalize_edit = function(filename)
     local lines = vim.api.nvim_buf_get_lines(M.input_buf, 0, -1, false)
     local width = tonumber(lines[1]:match("Width:%s*(%d+)")) or 40
@@ -136,6 +145,7 @@ M._finalize_edit = function(filename)
     vim.api.nvim_put(table_lines, 'l', true, true)
 end
 
+-- Binds the :TableEdit command.
 M.setup = function()
     vim.api.nvim_create_user_command("TableEdit", function()
         M.edit_table_at_cursor()

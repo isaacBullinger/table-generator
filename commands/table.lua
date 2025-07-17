@@ -22,6 +22,7 @@ M.open_table_input = function()
         border = {"+","-","+","|"},
     })
 
+    -- Instructional message and width prompt.
     local msg = {
         "Write values in double quotes separated by commas. For rows, use a new line. Use the first row for headers. Press enter to generate table.",
         "Width: "
@@ -33,23 +34,25 @@ M.open_table_input = function()
     -- Close window using Esc
     vim.api.nvim_buf_set_keymap(buf, "n", "<Esc>", "<Cmd>bd!<CR>", { noremap = true, silent = true })
 
-    -- Keybinding to save to CSV
+    -- Process input using Enter
     vim.api.nvim_buf_set_keymap(buf, "n", "<CR>", "<Cmd>lua require('table-generator.commands.table').process_input()<CR>", { noremap = true, silent = true })
 
     M.input_win = win
     M.input_buf = buf
 end
 
--- Save input to CSV file.
+-- Processes user input, saves to CSV file, generates the ASCII table and inserts it into the current buffer.
 M.process_input = function()
     local width_line_index = 2
     local input_lines = vim.api.nvim_buf_get_lines(M.input_buf, 0, -1, false)
     local width = tonumber(input_lines[width_line_index]:match("Width:%s*(%d+)"))
 
+    -- Collect CSV content lines
     local all_lines = vim.api.nvim_buf_get_lines(M.input_buf, 0, -1, false)
     local lines = {}
     for i = width_line_index + 1, #all_lines do
-        if all_lines[i]:match('%S') then  -- only non-empty lines
+        -- Skip empty lines
+        if all_lines[i]:match('%S') then
             table.insert(lines, all_lines[i])
         end
     end
@@ -58,12 +61,14 @@ M.process_input = function()
         return
     end
 
+    -- Prompt user for file name
     vim.ui.input({ prompt = "Enter filename (without extension): " }, function(input)
         if input and input ~= "" then
             local path = vim.fn.getcwd() .. "/" .. input .. ".csv"
             local file = io.open(path, "w")
 
             if file then
+                -- Set width in the first line
                 file:write(width .. "\n")
                 for i = 1, #lines do
                     local fields = core.parse_csv_line(lines[i])
@@ -76,7 +81,7 @@ M.process_input = function()
                 file:close()
                 print("CSV saved to: " .. path)
 
-                -- Insert table
+                -- Generate ASCII table and insert into current buffer
                 local rows = core.read_csv(input .. ".csv")
                 local table_lines = core.generate_ascii_table(rows, tonumber(width))
 
@@ -89,10 +94,12 @@ M.process_input = function()
             print("Save cancelled.")
         end
 
+        -- Close floating window
         vim.api.nvim_win_close(M.input_win, true)
     end)
 end
 
+-- Binds the :Table command to open the input UI.
 M.setup = function()
     vim.api.nvim_create_user_command("Table", function()
         M.open_table_input()
